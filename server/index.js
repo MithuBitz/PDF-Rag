@@ -2,6 +2,11 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { Queue } from "bullmq";
+import dotenv from "dotenv";
+import { QdrantVectorStore } from "@langchain/qdrant";
+import { OpenAIEmbeddings } from "@langchain/openai";
+
+dotenv.config();
 
 const myQueue = new Queue("file-upload-queue", {
   connection: { host: "localhost", port: "6379" },
@@ -18,6 +23,16 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
+
+const embeddings = new OpenAIEmbeddings({
+  model: "text-embedding-3-small",
+  apiKey: process.env.OPENAI_KEY,
+});
+
+const vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+  url: "http://localhost:6333",
+  collectionName: "pdf-rag",
+});
 
 const app = express();
 
@@ -38,6 +53,18 @@ app.post("/upload/pdf", upload.single("pdf"), async (req, res) => {
     })
   );
   return res.json({ message: "Uploaded" });
+});
+
+app.get("/chat", async (req, res) => {
+  const userQuery = "What is Step-Back Prompting";
+  const ret = vectorStore.asRetriever({
+    k: 2,
+  });
+  const result = await ret.invoke(userQuery);
+
+  
+
+  return res.json(result);
 });
 
 app.listen(8000, () => console.log(`Server running on PORT : ${8000}`));
